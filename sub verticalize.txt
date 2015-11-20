@@ -1,9 +1,7 @@
 
 '*****************************************************
 'Sub Verticalize()
-'by Hal Beresford
-'September 26, 2015
-'
+'https://github.com/jcoffeepot/Excel-VBA
 'For use in Excel
 '
 'Results:
