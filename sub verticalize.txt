@@ -1,4 +1,3 @@
-
 '*****************************************************
 'Sub Verticalize()
 'https://github.com/jcoffeepot/Excel-VBA
@@ -18,6 +17,8 @@
 '
 '*****************************************************
 Sub Verticalize()
+On Error GoTo ErrorHandler:
+
     'Declare Variables
     Dim InputRange As Range     'Range for input table
     Dim OutputRange As Range    'Range (upper-left corner) for output table
@@ -40,10 +41,8 @@ Sub Verticalize()
     'Initialize Variables
     MsgBox "Note: This Macro operates under two assumptions: 1.  Input Data Range must begin with all dimension columns, left-to-right.  2.  Remainder of columns to the right are measure columns."
     Set InputRange = Application.InputBox(Title:="Input Data Range", prompt:="Please select or enter the input table range.  It can be a normal Excel range (e.g. $A$1:$D$5) or a named range (e.g. MyTable)", Type:=8)
-    Set InputWorkbook = ActiveWorkbook
     DTot = Application.InputBox(Title:="Dimensions", prompt:="How many dimensions columns are there?", Type:=1)
     Set OutputRange = Application.InputBox(Title:="Output Data Range.", prompt:="Please select the upper-left cell of where you'd like the output to appear.", Type:=8)
-    Set OutputWorkbook = ActiveWorkbook
     MStart = DTot + 1
     MTot = InputRange.Columns.Count - DTot
     ReDim MNames(MTot)
@@ -104,5 +103,10 @@ Sub Verticalize()
             OutRow = OutRow + 1
         Next j
     Next InRow
+
+Exit Sub
+
+ErrorHandler:
+    MsgBox "Error: " & Err.Description & ".  Please try again.", vbOKOnly
 
 End Sub
