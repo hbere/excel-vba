@@ -39,9 +39,11 @@ Sub Verticalize()
 
     'Initialize Variables
     MsgBox "Note: This Macro operates under two assumptions: 1.  Input Data Range must begin with all dimension columns, left-to-right.  2.  Remainder of columns to the right are measure columns."
-    Set InputRange = Application.InputBox(Title:="Input Data Range", prompt:="Please type or select the input table range.  It can be a normal Excel range (e.g. $A$1:$D$5) or a named range (e.g. MyTable)", Type:=8)
+    Set InputRange = Application.InputBox(Title:="Input Data Range", prompt:="Please select or enter the input table range.  It can be a normal Excel range (e.g. $A$1:$D$5) or a named range (e.g. MyTable)", Type:=8)
+    Set InputWorkbook = ActiveWorkbook
     DTot = Application.InputBox(Title:="Dimensions", prompt:="How many dimensions columns are there?", Type:=1)
     Set OutputRange = Application.InputBox(Title:="Output Data Range.", prompt:="Please select the upper-left cell of where you'd like the output to appear.", Type:=8)
+    Set OutputWorkbook = ActiveWorkbook
     MStart = DTot + 1
     MTot = InputRange.Columns.Count - DTot
     ReDim MNames(MTot)
@@ -66,10 +68,13 @@ Sub Verticalize()
     Next i
 
     'Transform the data
-    OutputRange.Select
     OutRow = 2
     'Cycle through input rows starting with row 2
     For InRow = 2 To InputRange.Rows.Count  'FOR EACH INPUT TABLE ROW
+    
+        'Activate input workbook, sheet, and range
+        Workbooks(InputRange.Worksheet.Parent.Name).Sheets(InputRange.Parent.Name).Activate
+        InputRange.Activate
     
         'Populate Dimension Values Array
         For i = 1 To DTot  'SAVE DIMENSION NAMES IN ARRAY
@@ -81,6 +86,10 @@ Sub Verticalize()
             j = MStart + i - 1
             MVals(i) = InputRange.Cells(InRow, j)
         Next i
+        
+        'Activate output workbook, sheet, and range
+        Workbooks(OutputRange.Worksheet.Parent.Name).Sheets(OutputRange.Parent.Name).Activate
+        OutputRange.Activate
         
         'Paste Everything in Output Range
         For j = 1 To MTot  'FOR [Count(Measures)] OUTPUT TABLE ROWS
