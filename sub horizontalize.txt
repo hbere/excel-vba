@@ -41,7 +41,7 @@ On Error GoTo ErrorHandler:
 
     'Initialize variables
     MsgBox "Note: This Macro operates under four assumptions: 1.  Input table must begin with dimension columns, reading left-to-right.  2.  The last column on the right contains data.  3.  The second-to-last column on the right contains field names corresponding to the data in the last column on the right.  4.  Each entity has the same number of rows."
-    Set InputRange = Application.InputBox(Title:="Input Data Range", prompt:="Please select or enter the input table range.  It can be a normal Excel range (e.g. $A$1:$D$5) or a named range (e.g. MyTable)", Type:=8)
+    Set InputRange = Application.InputBox(Title:="Input Data Range", prompt:="Please select or enter the input table range.  It can be a normal Excel range (e.g. $A$1:$D$5) or a named range (e.g. MyTable).  For this macro to work correctly, the first row must contain *data*, not column names.", Type:=8)
     RowsPerEntity = Application.InputBox(Title:="Dimensions", prompt:="How many rows are there per entity?", Type:=1)
     Set OutputRange = Application.InputBox(Title:="Output Data Range.", prompt:="Please select the upper-left cell of where you'd like the output to appear.", Type:=8)
     DataColFieldNo = InputRange.Columns.Count - 1
