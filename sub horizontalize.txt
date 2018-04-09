@@ -18,7 +18,7 @@
 '
 '
 '/**
-' * Copyright 2017 Hal Beresford
+' * Copyright 2018 jcoffeepot
 ' *
 ' * Licensed under the Apache License, Version 2.0 (the "License");
 ' * you may not use this file except in compliance with the License.
@@ -64,7 +64,7 @@ On Error GoTo ErrorHandler:
     DataColFieldNo = InputRange.Columns.Count - 1
     DimColTot = InputRange.Columns.Count - 2
     EntityTot = InputRange.Rows.Count / RowsPerEntity
-    
+
     'Configure environment
     Application.ScreenUpdating = False
 

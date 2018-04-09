@@ -17,7 +17,7 @@
 '
 '
 '/**
-' * Copyright 2017 Hal Beresford
+' * Copyright 2018 jcoffeepot
 ' *
 ' * Licensed under the Apache License, Version 2.0 (the "License");
 ' * you may not use this file except in compliance with the License.
@@ -39,19 +39,19 @@ On Error GoTo ErrorHandler:
     'Declare Variables
     Dim InputRange As Range     'Range for input table
     Dim OutputRange As Range    'Range (upper-left corner) for output table
-    
+
     Dim DTot As Long            'Number of dimensions (Static)
     Dim MStart As Long          'Starting column for measures
     Dim MTot As Long            'Total number of measures
     Dim MNames() As String      'Array for Measure names
     Dim DVals() As String       'Dynamic Array for Dimension values
     Dim MVals() As String       'Dynamic Array for Measure values
-    
+
     Dim OutRow As Long          'Counter for output rage row
     Dim OutCol As Long          'Counter for output range column
     Dim InRow As Long           'Counter for input range row
     Dim InCol As Long           'Counter for input range column
-    
+
     Dim i As Long               'All-purpose counter
     Dim j As Long               'All-purpose counter
 
@@ -65,7 +65,7 @@ On Error GoTo ErrorHandler:
     ReDim MNames(MTot)
     ReDim DVals(DTot)
     ReDim MVals(MTot)
-    
+
     'Configure Environment
     Application.ScreenUpdating = False
 
@@ -87,26 +87,26 @@ On Error GoTo ErrorHandler:
     OutRow = 2
     'Cycle through input rows starting with row 2
     For InRow = 2 To InputRange.Rows.Count  'FOR EACH INPUT TABLE ROW
-    
+
         'Activate input workbook, sheet, and range
         Workbooks(InputRange.Worksheet.Parent.Name).Sheets(InputRange.Parent.Name).Activate
         InputRange.Activate
-    
+
         'Populate Dimension Values Array
         For i = 1 To DTot  'SAVE DIMENSION NAMES IN ARRAY
             DVals(i) = InputRange.Cells(InRow, i)
         Next i
-        
+
         'Populate Measure Values Array
         For i = 1 To MTot  'SAVE DIMENSION NAMES IN ARRAY
             j = MStart + i - 1
             MVals(i) = InputRange.Cells(InRow, j)
         Next i
-        
+
         'Activate output workbook, sheet, and range
         Workbooks(OutputRange.Worksheet.Parent.Name).Sheets(OutputRange.Parent.Name).Activate
         OutputRange.Activate
-        
+
         'Paste Everything in Output Range
         For j = 1 To MTot  'FOR [Count(Measures)] OUTPUT TABLE ROWS
             OutCol = 1
