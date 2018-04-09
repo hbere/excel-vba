@@ -1,0 +1,237 @@
+'***********************************************************************************************************
+'exportAccessMetadata()
+'November 11, 2010
+'
+'Functions: 1) Chooses table name not already in use.  Example name: ztblMetadata_MSAccessToExcel_2010_11_11,
+'               with possible "#" characters at the end.
+'           2) Creates the metadata table.
+'           3) Queries table MSysObjects, populates the metadata table with names of database tables.
+'           4) Queries database tables, populates the metadata table with each table's variables.
+'           5) Exports the metadata table to format of user's choice.
+'           6) Deletes the metadata table from MS Access database.
+'
+'Output:    your database's metadata in Excel or other user-chosen format
+'
+'History:
+'Original code found at http://www.access-programmers.co.uk/forums/showthread.php?t=99194.  Author raskew.
+'jcoffeepot later modified that code to fix bugs and add functionality.
+'***********************************************************************************************************
+
+Private Sub exportAccessMetadata()
+On Error GoTo thisErr
+
+'Declare variables
+    Dim db As dao.Database      'database
+        'FIRST RECORDSET
+    Dim rs As Recordset         'recordset object
+    Dim strSQL As String        'SQL String
+        'SECOND RECORDSET
+    Dim rs2 As Recordset        'recordset object
+    Dim metadataTable As String 'Name of metadata table to be created
+    Dim strSQL2 As String       'SQL String
+        'TABLES & FIELDS
+    Dim td As TableDef          'table object
+    Dim tName As String         'table name
+    Dim fld As Field            'field object
+    Dim fType As String         'field type
+    Dim i As Long               'integer to store table number
+
+    'Initialize Variables
+    Set db = CurrentDb
+    strSQL = "SELECT MSysObjects.Name, MSysObjects.Type From MsysObjects WHERE " & _
+                "((MSysObjects.Type)=1 OR (MSysObjects.Type)=6 OR (MSysObjects.Type)=4) " & _
+                "ORDER BY MSysObjects.Name;"
+    Set rs = db.OpenRecordset(strSQL)
+    metadataTable = "ztblMetadata_MSAccessToExcel_" & Year(Now()) & "_" & Month(Now()) & "_" & Day(Now())
+    i = 0
+    
+    'For new metadata table, find table name that is not already in use
+    i = objectExists(metadataTable)
+    Do While i = 1
+        metadataTable = metadataTable & "#"
+        i = objectExists(metadataTable)
+    Loop
+    
+    'Create new metadata table
+    db.Execute "CREATE TABLE " & metadataTable & "(fieldName TEXT (55), tableName TEXT (55), fieldType TEXT (20), fieldSize Long,  fieldDescription TEXT (255), fieldCaption TEXT (255), fieldRowSource MEMO);"
+    
+On Error Resume Next
+    
+    'Initialize rs2 Variable
+    Set rs2 = db.OpenRecordset(metadataTable, dbOpenDynaset)
+
+    'Cycle through system table
+    rs.MoveFirst
+    Do While Not rs.EOF
+        'For tables that are not system tables
+        If Left(rs!Name, 4) <> "MSys" And Left(rs!Name, 1) <> "~" Then
+            'Identify the table number
+            tName = rs!Name
+            i = findTdfNumber(tName)
+            If i <> -999 Then
+                'Cycle through all fields in the table, populating ztblMetadata along the way
+                Set td = db.TableDefs(i)
+                For Each fld In td.Fields
+                    fType = acFieldType(fld.Type)
+                    rs2.AddNew
+                        rs2!FieldName = fld.Name
+                        rs2!tableName = tName
+                        rs2!FieldType = fType
+                        rs2!FieldSize = fld.Size
+                        rs2!fielddescription = fld.Properties("description")
+                        rs2!fieldCaption = fld.Properties("caption")
+                        rs2!fieldRowSource = fld.Properties("rowsource")
+                    rs2.Update
+                 Next fld
+            End If
+        End If
+        rs.MoveNext
+    Loop
+    
+    'Export new metadata table
+    DoCmd.OutputTo acOutputTable, metadataTable
+    
+    'Close recordset and database objects
+    rs.Close
+    rs2.Close
+    db.Close
+    
+    'Delete new metadata table
+    DoCmd.DeleteObject acTable, metadataTable
+
+thisExit:
+    Exit Sub
+
+thisErr:
+    'Alert user of error
+    MsgBox "Operation not completed.  Error Code: " & Err.Description
+    'Close recordset and database objects
+    rs.Close
+    db.Close
+    GoTo thisExit
+
+End Sub
+
+
+'*************************************************************************************
+'findTdfNumber(tblName As String) As Long
+'by jcoffeepot
+'November 10, 2010
+'
+'Returns the table number of a particular table name within the current database.
+'Returns -999 if table name not found.
+'
+'*************************************************************************************
+
+Private Function findTdfNumber(tblName As String) As Long
+On Error GoTo thisErr
+
+    'variable declaration
+    Dim db As dao.Database
+    Dim tdf As TableDef
+    Dim i, num As Long
+    
+    'initialization
+    Set db = CurrentDb
+    Set tdf = db.TableDefs(0)
+    num = CurrentDb.TableDefs.Count
+    
+    'find table number
+    Do While Not tblName = tdf.Name
+        i = i + 1
+        Set tdf = db.TableDefs(i)
+    Loop
+
+
+thisExit:
+    'close database object
+    db.Close
+    'return item number
+    findTdfNumber = i
+    Exit Function
+    
+thisErr:
+    i = -999
+    GoTo thisExit
+    
+End Function
+
+
+'***********************************************************************************************************
+'acFieldType(intType As Integer) As String
+'November 10, 2010
+'
+'Returns text name of field type
+'
+'History:
+'Original code found at http://www.access-programmers.co.uk/forums/showthread.php?t=99194.  Author raskew.
+'jcoffeepot later modified the code.
+'***********************************************************************************************************
+
+Private Function acFieldType(intType As Integer) As String
+    Dim varResult As String
+
+    Select Case intType
+        Case dbBoolean
+            varResult = "Yes/No"            '1.  aka "Boolean"
+        Case dbByte
+            varResult = "Byte"              '2
+        Case dbInteger
+            varResult = "Integer"           '3
+        Case dbLong
+            varResult = "Long Integer"      '4.  aka "Long"
+        Case dbCurrency
+            varResult = "Currency"          '5
+        Case dbSingle
+            varResult = "Single"            '6
+        Case dbDouble
+            varResult = "Double"            '7
+        Case dbDate
+            varResult = "Date/Time"         '8
+        Case dbBinary
+            varResult = "Binary"            '9
+        Case dbText
+            varResult = "Text"              '10
+        Case dbLongBinary
+            varResult = "Long Binary"       '11  aka "LongBinary"
+        Case dbMemo
+            varResult = "Memo"              '12
+        Case dbGUID
+            varResult = "GUID"              '15
+    End Select
+    
+    acFieldType = varResult
+End Function
+
+'*************************************************************************************
+'objectExists(strObjectName As String)
+'by jcoffeepot
+'October 7, 2010
+'
+'Function takes the name of an object.  Returns 1 if the object exists, 0 if not.
+'
+'*************************************************************************************
+Private Function objectExists(strObjectName As String)
+On Error Resume Next
+
+    'declare variables
+    Dim db As dao.Database
+    Dim rs As Recordset
+
+    'initialize variables
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset("MSysObjects", dbReadOnly)
+    
+    'see if table exists
+    rs.FindFirst "Name = '" & strObjectName & "'"
+    If rs.NoMatch Then
+        objectExists = 0
+    Else
+        objectExists = 1
+    End If
+
+    'close recordset
+    rs.Close
+    db.Close
+    
+End Function

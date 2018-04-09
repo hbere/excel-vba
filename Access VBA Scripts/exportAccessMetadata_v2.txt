@@ -1,0 +1,412 @@
+Option Compare Database
+Option Explicit
+
+'***********************************************************************************************************
+'exportAccessMetadata_v2()
+'October 21, 2011
+'
+'Functions: 1) Chooses table name not already in use.  Example name: ztblMetadata_MSAccessToExcel_2010_11_11,
+'               with possible "#" characters at the end.
+'           2) Creates the metadata table.
+'           3) Queries table MSysObjects, populates the metadata table with names of database tables.
+'           4) Queries database tables, populates the metadata table with each table's variables.
+'           5) Exports the metadata table to format of user's choice.
+'           6) Deletes the metadata table from MS Access database.
+'
+'Output:    your database's metadata in Excel or other user-chosen format
+'
+'History:
+'Original code found at http://www.access-programmers.co.uk/forums/showthread.php?t=99194.  Author raskew.
+'jcoffeepot later modified that code to fix bugs and add functionality to create exportAccessMetadata().
+'ExportAccessMetadata_v2() offers one slight improvement: the addition of a "choices" column that lists all
+'   choices and labels available within a field.
+'***********************************************************************************************************
+Private Sub exportAccessMetadata_v2()
+On Error GoTo thisErr
+
+'Declare variables
+    Dim db As DAO.Database      'database
+        'FIRST RECORDSET
+    Dim rs As Recordset         'recordset object
+    Dim strSQL As String        'SQL String
+        'SECOND RECORDSET
+    Dim rs2 As Recordset        'recordset object
+    Dim metadataTable As String 'Name of metadata table to be created
+    Dim strSQL2 As String       'SQL String
+        'TABLES & FIELDS
+    Dim td As TableDef          'table object
+    Dim tName As String         'table name
+    Dim fld As Field            'field object
+    Dim fType As String         'field type
+    Dim i As Long               'integer to store table number
+
+    'Initialize Variables
+    Set db = CurrentDb
+    strSQL = "SELECT MSysObjects.Name, MSysObjects.Type From MsysObjects WHERE " & _
+                "((MSysObjects.Type)=1 OR (MSysObjects.Type)=6 OR (MSysObjects.Type)=4) " & _
+                "ORDER BY MSysObjects.Name;"
+    Set rs = db.OpenRecordset(strSQL)
+    metadataTable = "ztblMetadata_MSAccessToExcel_" & Year(Now()) & "_" & Month(Now()) & "_" & Day(Now())
+    i = 0
+    
+    'For new metadata table, find table name that is not already in use
+    i = objectExists(metadataTable)
+    Do While i = 1
+        metadataTable = metadataTable & "#"
+        i = objectExists(metadataTable)
+    Loop
+    
+    'Create new metadata table
+    db.Execute "CREATE TABLE " & metadataTable & "(fieldName TEXT (55), tableName TEXT (55), fieldType TEXT (20), fieldSize Long,  fieldDescription TEXT (255), fieldCaption TEXT (255), fieldRowSource MEMO, fieldChoices MEMO);"
+    
+On Error Resume Next
+    
+    'Initialize rs2 Variable
+    Set rs2 = db.OpenRecordset(metadataTable, dbOpenDynaset)
+
+    'Cycle through system table
+    rs.MoveFirst
+    Do While Not rs.EOF
+        'For tables that are not system tables
+        If Left(rs!Name, 4) <> "MSys" And Left(rs!Name, 1) <> "~" Then
+            'Identify the table number
+            tName = rs!Name
+            i = findTdfNumber(tName)
+            If i <> -999 Then
+                'Cycle through all fields in the table, populating ztblMetadata along the way
+                Set td = db.TableDefs(i)
+                For Each fld In td.Fields
+                    fType = acFieldType(fld.Type)
+                    'if the field displayControl is text box or combo box, then
+                    If fld.Properties("displaycontrol").Value = 110 Or fld.Properties("displaycontrol").Value = 111 Then '109=text box, 110=list box, 111=combo box
+                        'select display control type
+                        Select Case fld.Properties("rowsourcetype")
+                            'if value list
+                            Case "value list"
+                                'if number of columns >=2, then bound column is value, the rest are labels
+                                If fld.Properties("columncount") >= 2 Then
+                                    rs2.AddNew
+                                        rs2!FieldName = fld.Name
+                                        rs2!tableName = tName
+                                        rs2!FieldType = fType
+                                        rs2!FieldSize = fld.Size
+                                        rs2!fielddescription = fld.Properties("description")
+                                        rs2!fieldCaption = fld.Properties("caption")
+                                        rs2!fieldRowSource = fld.Properties("rowsource")
+                                        rs2!fieldChoices = interpretValueList(fld.Properties("rowsource"), fld.Properties("boundcolumn"), fld.Properties("columncount"))
+                                    rs2.Update
+                                End If
+                                'append to strLabels
+                            'if table/query
+                            Case "table/query"
+                                'if number of columns >=2, then bound column is value, the rest are labels
+                                If fld.Properties("columncount") >= 2 Then
+                                    rs2.AddNew
+                                        rs2!FieldName = fld.Name
+                                        rs2!tableName = tName
+                                        rs2!FieldType = fType
+                                        rs2!FieldSize = fld.Size
+                                        rs2!fielddescription = fld.Properties("description")
+                                        rs2!fieldCaption = fld.Properties("caption")
+                                        rs2!fieldRowSource = fld.Properties("rowsource")
+                                        rs2!fieldChoices = interpretTQList(fld.Properties("rowsource"), fld.Properties("boundcolumn"), fld.Properties("columncount"))
+                                    rs2.Update
+                                End If
+                            'if field list
+                            Case "field list"
+                                'Take no action.  Just one column, so there
+                                'is no need to create SAS format labels.
+                        End Select
+                    Else
+                        'if other
+                        rs2.AddNew
+                            rs2!FieldName = fld.Name
+                            rs2!tableName = tName
+                            rs2!FieldType = fType
+                            rs2!FieldSize = fld.Size
+                            rs2!fielddescription = fld.Properties("description")
+                            rs2!fieldCaption = fld.Properties("caption")
+                            rs2!fieldRowSource = fld.Properties("rowsource")
+                            rs2!fieldChoices = fld.Properties("rowsource")
+                        rs2.Update
+                    End If
+                 Next fld
+            End If
+        End If
+        rs.MoveNext
+    Loop
+    
+    'Export new metadata table
+    DoCmd.OutputTo acOutputTable, metadataTable
+    
+    'Close recordset and database objects
+    rs.Close
+    rs2.Close
+    db.Close
+    
+    'Delete new metadata table
+    DoCmd.DeleteObject acTable, metadataTable
+
+thisExit:
+    Exit Sub
+
+thisErr:
+    'Alert user of error
+    MsgBox "Operation not completed.  Error Code: " & Err.Description
+    'Close recordset and database objects
+    rs.Close
+    db.Close
+    GoTo thisExit
+
+End Sub
+
+
+'*************************************************************************************
+'findTdfNumber(tblName As String) As Long
+'by jcoffeepot
+'November 10, 2010
+'
+'Returns the table number of a particular table name within the current database.
+'Returns -999 if table name not found.
+'
+'*************************************************************************************
+
+Private Function findTdfNumber(tblName As String) As Long
+On Error GoTo thisErr
+
+    'variable declaration
+    Dim db As DAO.Database
+    Dim tdf As TableDef
+    Dim i, num As Long
+    
+    'initialization
+    Set db = CurrentDb
+    Set tdf = db.TableDefs(0)
+    num = CurrentDb.TableDefs.Count
+    
+    'find table number
+    Do While Not tblName = tdf.Name
+        i = i + 1
+        Set tdf = db.TableDefs(i)
+    Loop
+
+
+thisExit:
+    'close database object
+    db.Close
+    'return item number
+    findTdfNumber = i
+    Exit Function
+    
+thisErr:
+    i = -999
+    GoTo thisExit
+    
+End Function
+
+
+'***********************************************************************************************************
+'acFieldType(intType As Integer) As String
+'November 10, 2010
+'
+'Returns text name of field type
+'
+'History:
+'Original code found at http://www.access-programmers.co.uk/forums/showthread.php?t=99194.  Author raskew.
+'jcoffeepot later modified the code.
+'***********************************************************************************************************
+
+Private Function acFieldType(intType As Integer) As String
+    Dim varResult As String
+
+    Select Case intType
+        Case dbBoolean
+            varResult = "Yes/No"            '1.  aka "Boolean"
+        Case dbByte
+            varResult = "Byte"              '2
+        Case dbInteger
+            varResult = "Integer"           '3
+        Case dbLong
+            varResult = "Long Integer"      '4.  aka "Long"
+        Case dbCurrency
+            varResult = "Currency"          '5
+        Case dbSingle
+            varResult = "Single"            '6
+        Case dbDouble
+            varResult = "Double"            '7
+        Case dbDate
+            varResult = "Date/Time"         '8
+        Case dbBinary
+            varResult = "Binary"            '9
+        Case dbText
+            varResult = "Text"              '10
+        Case dbLongBinary
+            varResult = "Long Binary"       '11  aka "LongBinary"
+        Case dbMemo
+            varResult = "Memo"              '12
+        Case dbGUID
+            varResult = "GUID"              '15
+    End Select
+    
+    acFieldType = varResult
+End Function
+
+'*************************************************************************************
+'objectExists(strObjectName As String)
+'by jcoffeepot
+'October 7, 2010
+'
+'Function takes the name of an object.  Returns 1 if the object exists, 0 if not.
+'
+'*************************************************************************************
+Private Function objectExists(strObjectName As String)
+On Error Resume Next
+
+    'declare variables
+    Dim db As DAO.Database
+    Dim rs As Recordset
+
+    'initialize variables
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset("MSysObjects", dbReadOnly)
+    
+    'see if table exists
+    rs.FindFirst "Name = '" & strObjectName & "'"
+    If rs.NoMatch Then
+        objectExists = 0
+    Else
+        objectExists = 1
+    End If
+
+    'close recordset
+    rs.Close
+    db.Close
+    
+End Function
+
+'*************************************************************************************
+'takes in a variable's rowSource as string (formatted as value list)
+'returns string that will fit within SAS script
+'8 May 2011, by jcoffeepot 
+'*************************************************************************************
+Public Function interpretValueList(strRowSource As String, boundCol As Integer, colCt As Integer) As String
+    'Declare variables
+    Dim valList() As String
+    Dim strReturn As String
+    Dim strTemp As String
+    Dim keys() As String
+    Dim labels() As String
+    Dim i, j, k As Integer
+    Dim temp As Integer
+    Dim ctSemicolons As Integer
+    Dim ctRecords As Integer
+    
+    'Initialize
+    ctSemicolons = 0
+    
+    'Count the number of semicolons
+    '(Ths number / column count = number of records)
+    For temp = 1 To Len(strRowSource)  'Increment though entire string
+        Select Case Mid(strRowSource, temp, 1)
+            Case ";"  'Count if it's a semicolon
+                ctSemicolons = ctSemicolons + 1
+            Case Else  'Do nothing
+        End Select
+    Next
+    ReDim valList(0 To ctSemicolons) As String
+    ctRecords = (ctSemicolons + 1) / colCt
+    
+    'Convert the existing value-list string to an array
+    For i = 0 To ctSemicolons
+        temp = InStr(strRowSource, ";")
+        If temp > 0 Then
+            strTemp = Left(strRowSource, temp - 1)
+            strRowSource = Right(strRowSource, Len(strRowSource) - temp)
+        Else
+            strTemp = strRowSource
+        End If
+        valList(i) = strTemp
+    Next i
+    
+    'Fill key array
+    ReDim keys(0 To ctRecords - 1) As String
+    j = boundCol - 1
+    For i = 0 To ctRecords - 1
+        keys(i) = valList(j)
+        j = j + colCt
+    Next i
+    
+    'Fill label array
+    ReDim labels(0 To ctRecords - 1) As String
+    j = 0
+    For i = 0 To ctRecords - 1
+        k = 0
+        For j = j To (i + 1) * colCt - 1
+            If Not (j Mod colCt = boundCol - 1) Then
+                labels(i) = labels(i) & valList(j)
+                If colCt - 1 >= 2 And k < colCt - 2 Then
+                    labels(i) = labels(i) & " | "
+                    k = k + 1
+                End If
+            End If
+        Next j
+    Next i
+    
+    'Fill return string
+    For i = 0 To ctRecords - 1
+        strReturn = strReturn & " " & keys(i) & "='" & labels(i) & "'"
+    Next i
+    
+    'Return value
+    interpretValueList = strReturn
+    
+End Function
+
+'*************************************************************************************
+'takes in a variable's rowSource as string (formatted as table/query name or SQL SELECT query)
+'returns string that will fit within SAS script
+'8 May 2011, by jcoffeepot 
+'*************************************************************************************
+Public Function interpretTQList(strRowSource As String, boundCol As Integer, colCt As Integer) As String
+    'Declare variables
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim fld As DAO.Field
+    Dim varTemp As Variant
+    Dim strReturn As String
+    Dim i, k As Integer
+    
+    'Initialize
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset(strRowSource, dbOpenDynaset)
+
+    'Populate the string to return
+    rs.MoveFirst
+    Do While Not rs.EOF
+        strReturn = strReturn & rs.Fields(boundCol - 1).Value
+        strReturn = strReturn & "='"
+        k = 0
+        For i = 1 To colCt
+            If Not ((i Mod colCt - 1 = boundCol - 1) Or (i Mod colCt + colCt - 1 = boundCol - 1)) Then
+                'save label to string
+                If colCt - 1 >= 2 And k < colCt - 2 Then
+                    varTemp = rs.Fields(i - 1).Value & " | "
+                    k = k + 1
+                Else
+                    varTemp = varTemp & rs.Fields(i - 1).Value
+                End If
+            End If
+        Next i
+        strReturn = strReturn & varTemp & "' "
+        varTemp = Null
+        rs.MoveNext
+    Loop
+
+    'Return value
+    interpretTQList = strReturn
+
+'    'Close objects
+'    db.Close
+'    rs.Close
+    
+End Function

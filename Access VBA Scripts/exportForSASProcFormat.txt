@@ -1,0 +1,242 @@
+'Exports SAS proc format statement based on metadata in MS Access tables.
+'Statement includes questions with labeled answers.
+'Output file is C:\accessToSASFormatLabels_YEAR_MO_DAY_HR_MIN_S"
+'8 May 2011, by jcoffeepot
+Public Sub exportForSASProcFormat()
+On Error GoTo errorHandler
+
+    'Declare
+    Dim db As DAO.Database
+    Dim rsTables As DAO.Recordset
+    Dim rs As DAO.Recordset
+    Dim rsTemp As DAO.Recordset
+    Dim fld As DAO.Field
+    Dim strSQLTables As String
+    Dim strPFormat As String
+    Dim strAFormat As String
+    Dim strSQLRowSource As String
+    Dim strPath As String
+    Dim intChoice As Integer
+    
+    'Initialize
+    Set db = CurrentDb
+    strSQLTables = "SELECT MSysObjects.Name, MSysObjects.Type " & _
+        "FROM MSysObjects " & _
+        "WHERE (((MSysObjects.Name) Not Like 'Msys*' And (MSysObjects.Name) Not Like '~*' And (MSysObjects.Name) Not Like 'f_*') AND ((MSysObjects.Type)=1)) OR (((MSysObjects.Name) Not Like 'Msys*' And (MSysObjects.Name) Not Like '~*') AND ((MSysObjects.Type)=4)) OR (((MSysObjects.Name) Not Like 'Msys*' And (MSysObjects.Name) Not Like '~*') AND ((MSysObjects.Type)=6));"
+    Set rsTables = db.OpenRecordset(strSQLTables, dbOpenDynaset)
+    
+    'Program
+    'cycle through tables
+    rsTables.MoveFirst
+    Do While Not rsTables.EOF
+        strPFormat = strPFormat & rsTables!Name & vbCrLf
+        strAFormat = strAFormat & rsTables!Name & vbCrLf
+        Set rs = db.OpenRecordset(rsTables!Name, dbOpenDynaset)
+        'cycle through fields in this table
+        For Each fld In rs.Fields
+            'if the field displayControl is text box or combo box, then
+            If fld.Properties("displaycontrol").Value = 110 Or fld.Properties("displaycontrol").Value = 111 Then '109=text box, 110=list box, 111=combo box
+                'select display control type
+                Select Case fld.Properties("rowsourcetype")
+                    'if value list
+                    Case "value list"
+                        'if number of columns >=2, then bound column is value, the rest are labels
+                        If fld.Properties("columncount") >= 2 Then
+                            strPFormat = strPFormat & vbTab & "value " & fld.Name & "_"
+                            strPFormat = strPFormat & interpretValueList(fld.Properties("rowsource"), fld.Properties("boundcolumn"), fld.Properties("columncount"))
+                            strPFormat = strPFormat & ";" & vbCrLf
+                            strAFormat = strAFormat & vbTab & "Format " & fld.Name & " " & fld.Name & "_.;"
+                            strAFormat = strAFormat & vbCrLf
+                        End If
+                        'append to strLabels
+                    'if table/query
+                    Case "table/query"
+                        'if number of columns >=2, then bound column is value, the rest are labels
+                        If fld.Properties("columncount") >= 2 Then
+                            strPFormat = strPFormat & vbTab & "value " & fld.Name & "_ "
+                            strPFormat = strPFormat & interpretTQList(fld.Properties("rowsource"), fld.Properties("boundcolumn"), fld.Properties("columncount"))
+                            strPFormat = strPFormat & ";" & vbCrLf
+                            strAFormat = strAFormat & vbTab & "Format " & fld.Name & " " & fld.Name & "_.;"
+                            strAFormat = strAFormat & vbCrLf
+                        End If
+                    'if field list
+                    Case "field list"
+                        'Take no action.  Just one column, so there
+                        'is no need to create SAS format labels.
+                End Select
+            End If
+        Next fld
+        rsTables.MoveNext
+    Loop
+
+    'Choose destination folder
+    With Application.FileDialog(4)
+        .Title = "Choose Destination Folder for Text File"
+        .InitialFileName = CurrentProject.Path
+        intChoice = .Show
+        'If a folder was selected
+        If intChoice <> 0 Then
+            'Then save the folder path and file name into strPath
+            strPath = Trim(.SelectedItems.Item(1)) & "\accessToSASFormatLabels_" & Year(Now()) & "_" & Month(Now()) & "_" & Day(Now()) & "_" & Hour(Now()) & "_" & Minute(Now()) & "_" & Second(Now()) & ".txt"
+        End If
+    End With
+    
+    'Export file, as long as user didn't cancel the folder choosing operation
+    If intChoice <> 0 Then
+        Open strPath For Output As #1    ' Open file for output.
+        Print #1, strPFormat
+        Print #1,
+        Print #1,
+        Print #1, strAFormat
+        Close #1    ' Close file.
+        MsgBox "Your file has been exported.  Available here: " & vbCrLf & vbCrLf & strPath, , "Success"
+    End If
+
+thisExit:
+    'Close
+    rsTables.Close
+    rs.Close
+    db.Close
+    Exit Sub
+
+errorHandler:
+    Select Case Err.Number
+        Case 3270 'property not found
+            Resume Next
+        Case 3008 'one of the tables is already opened and must be closed
+            MsgBox "Action cancelled.  " & _
+                Err.Description & _
+                "  Please close this table, then rerun this script."
+            GoTo thisExit
+        Case Else
+            strPFormat = strPFormat & vbCrLf & "###Error " & Err.Number & ".  " & Err.Description
+            Resume Next
+    End Select
+
+End Sub
+
+
+'takes in a variable's rowSource as string (formatted as value list)
+'returns string that will fit within SAS script
+'8 May 2011, by jcoffeepot
+Public Function interpretValueList(strRowSource As String, boundCol As Integer, colCt As Integer) As String
+    'Declare variables
+    Dim valList() As String
+    Dim strReturn As String
+    Dim strTemp As String
+    Dim keys() As String
+    Dim labels() As String
+    Dim i, j, k As Integer
+    Dim temp As Integer
+    Dim ctSemicolons As Integer
+    Dim ctRecords As Integer
+    
+    'Initialize
+    ctSemicolons = 0
+    
+    'Count the number of semicolons
+    '(Ths number / column count = number of records)
+    For temp = 1 To Len(strRowSource)  'Increment though entire string
+        Select Case Mid(strRowSource, temp, 1)
+            Case ";"  'Count if it's a semicolon
+                ctSemicolons = ctSemicolons + 1
+            Case Else  'Do nothing
+        End Select
+    Next
+    ReDim valList(0 To ctSemicolons) As String
+    ctRecords = (ctSemicolons + 1) / colCt
+    
+    'Convert the existing value-list string to an array
+    For i = 0 To ctSemicolons
+        temp = InStr(strRowSource, ";")
+        If temp > 0 Then
+            strTemp = Left(strRowSource, temp - 1)
+            strRowSource = Right(strRowSource, Len(strRowSource) - temp)
+        Else
+            strTemp = strRowSource
+        End If
+        valList(i) = strTemp
+    Next i
+    
+    'Fill key array
+    ReDim keys(0 To ctRecords - 1) As String
+    j = boundCol - 1
+    For i = 0 To ctRecords - 1
+        keys(i) = valList(j)
+        j = j + colCt
+    Next i
+    
+    'Fill label array
+    ReDim labels(0 To ctRecords - 1) As String
+    j = 0
+    For i = 0 To ctRecords - 1
+        k = 0
+        For j = j To (i + 1) * colCt - 1
+            If Not (j Mod colCt = boundCol - 1) Then
+                labels(i) = labels(i) & valList(j)
+                If colCt - 1 >= 2 And k < colCt - 2 Then
+                    labels(i) = labels(i) & " | "
+                    k = k + 1
+                End If
+            End If
+        Next j
+    Next i
+    
+    'Fill return string
+    For i = 0 To ctRecords - 1
+        strReturn = strReturn & " " & keys(i) & "='" & labels(i) & "'"
+    Next i
+    
+    'Return value
+    interpretValueList = strReturn
+    
+End Function
+
+
+'takes in a variable's rowSource as string (formatted as table/query name or SQL SELECT query)
+'returns string that will fit within SAS script
+'8 May 2011, by jcoffeepot
+Public Function interpretTQList(strRowSource As String, boundCol As Integer, colCt As Integer) As String
+    'Declare variables
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim fld As DAO.Field
+    Dim varTemp As Variant
+    Dim strReturn As String
+    Dim i, k As Integer
+    
+    'Initialize
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset(strRowSource, dbOpenDynaset)
+
+    'Populate the string to return
+    rs.MoveFirst
+    Do While Not rs.EOF
+        strReturn = strReturn & rs.Fields(boundCol - 1).Value
+        strReturn = strReturn & "='"
+        k = 0
+        For i = 1 To colCt
+            If Not ((i Mod colCt - 1 = boundCol - 1) Or (i Mod colCt + colCt - 1 = boundCol - 1)) Then
+                'save label to string
+                If colCt - 1 >= 2 And k < colCt - 2 Then
+                    varTemp = rs.Fields(i - 1).Value & " | "
+                    k = k + 1
+                Else
+                    varTemp = varTemp & rs.Fields(i - 1).Value
+                End If
+            End If
+        Next i
+        strReturn = strReturn & varTemp & "' "
+        varTemp = Null
+        rs.MoveNext
+    Loop
+
+    'Return value
+    interpretTQList = strReturn
+
+'    'Close objects
+'    db.Close
+'    rs.Close
+    
+End Function
+
