@@ -1,5 +1,5 @@
 # Excel-VBA
-A collection of VBA scripts for data transformations, data cleaning, and/or metadata exports in Microsoft Excel and/or Microsoft Access.
+A collection of VBA scripts for data transformations, data cleaning, and/or metadata exports in Microsoft Excel or Microsoft Access.
 
 # for Excel
 * sub verticalize(): Transform an Excel table from row-based to column-based.  Allows for the data to be more easily summarized with a Pivot Table.
