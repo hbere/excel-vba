@@ -9,3 +9,6 @@ A collection of VBA scripts for data transformations, data cleaning, and/or meta
 * exportAccessMetadata.txt: Old starter code for exporting metadata Access database metadata in a tabular format.
 * exportAccessMetadata_v2.txt: Old starter code for exporting metadata Access database metadata in a tabular format.
 * exportForSASProcFormat.txt: Old starter code for exporting Access database metadata for SAS Proc Format.
+
+# License
+The content of this repository is licensed according to an [Apache License 2.0](https://github.com/jcoffeepot/Excel-VBA/blob/master/LICENSE).
